@@ -40,8 +40,10 @@ import org.junit.*;
 import org.junit.rules.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.StopWatch;
 import pl.touk.throwing.ThrowingSupplier;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -77,6 +79,9 @@ public class CommitingTest
     //private static String COREDB_URL = "http://cppedit-corewslrw.maps-india-contentops.amiefarm.com/coredb-main-ws";
     //private static String COREDB_URL = "http://hkm-cpp-r2-coredb-main-ws-live-rw.service.eu-west-1-hkm.maps-hkm.amiefarm.com:8080/coredb-main-ws";
     private ExecutorService pool = Executors.newCachedThreadPool();
+
+
+    private long commitTotalTimeMS = 0;
 
     @Rule
     public Timeout globalTimeout= new Timeout(20 * 60 * 1_000);
@@ -130,7 +135,9 @@ public class CommitingTest
         int dependantsCount = getTestParameter("DEPENDANTS", 20);
         int repeat = getTestParameter("REPEAT", 20);
 
-        LOGGER.info("");
+
+
+        try {
 
         IntStream.range(0, repeat).forEach((i)-> {
             try {
@@ -139,6 +146,10 @@ public class CommitingTest
                 e.printStackTrace();
             }
         });
+        } finally {
+            LOGGER.info("TOTALL_COMMIT_TIME_MS=" + commitTotalTimeMS);
+            LOGGER.info("AVG_COMMIT_TIME_MS=" + commitTotalTimeMS/(parentOrdersCount*dependantsCount*repeat));
+        }
     }
 
     private Integer getTestParameter(String paramName, int defaultValue) {
@@ -147,33 +158,31 @@ public class CommitingTest
 
     private void performParalelCommits(int testNo, int rows, int cols) throws DataConnectionException {
 
-        String orderId = "ORDER_" + testNo + "_";
+            String orderId = "ORDER_" + testNo + "_";
+            Branch branch = getWrite().createDisconnectedBranch();
 
+            Optional<CheckResults> anyError = IntStream.range(0, rows)
+                .mapToObj(i -> IntStream.range(0, cols)
+                    .mapToObj(n -> {
+                        return pool.submit(() -> createEditFuture(branch, orderId, cols, i, n));
+                    }))
+                .flatMap(stream -> stream)
+                .collect(Collectors.toList())
+                .stream()
+                .map(f -> ThrowingSupplier.unchecked(() -> f.get()).get())
+                .map(commitAction -> pool.submit(() -> commitAction.uncheck().get()))
+                .collect(Collectors.toList())
+                .stream()
+                .map(f -> (ThrowingSupplier<CheckResults, Exception>)() -> f.get())
+                .map(thf -> thf.uncheck().get())
+                .filter(Objects::nonNull)
+                .filter(result -> result.getCheckStatus() != CheckResults.STATUS.OK)
+                .findAny();
 
-        Branch branch = getWrite().createDisconnectedBranch();
+            anyError.ifPresent(result -> assertThat(result.getCheckStatus()).isEqualTo(CheckResults.STATUS.OK));
 
-        Optional<CheckResults> anyError = IntStream.range(0, rows)
-            .mapToObj(i -> IntStream.range(0, cols)
-                .mapToObj(n -> {
-                    return pool.submit(() -> createEditFuture(branch, orderId, cols, i, n));
-                }))
-            .flatMap(stream -> stream)
-            .collect(Collectors.toList())
-            .stream()
-            .map(f -> ThrowingSupplier.unchecked(() -> f.get()).get())
-            .map(commitAction -> pool.submit(() -> commitAction.uncheck().get()))
-            .collect(Collectors.toList())
-            .stream()
-            .map(f -> (ThrowingSupplier<CheckResults, Exception>)() -> f.get())
-            .map(thf -> thf.uncheck().get())
-            .filter(Objects::nonNull)
-            .filter(result -> result.getCheckStatus() != CheckResults.STATUS.OK)
-            .findAny();
-
-        anyError.ifPresent(result -> assertThat(result.getCheckStatus()).isEqualTo(CheckResults.STATUS.OK));
-
-        Version version = connection.getJournalInterface().getCurrentVersion(branch);
-        Java6Assertions.assertThat(version.getJournalVersion()).isGreaterThanOrEqualTo(rows * cols);
+            Version version = connection.getJournalInterface().getCurrentVersion(branch);
+            Java6Assertions.assertThat(version.getJournalVersion()).isGreaterThanOrEqualTo(rows * cols);
     }
 
     private ThrowingSupplier<CheckResults, Exception> createEditFuture(Branch branch, String orderId, int cols, int i, int n) {
@@ -213,27 +222,38 @@ public class CommitingTest
     private CheckResults commitWithRetry(String orderId, String dependsOnOrderId, Transaction tx) throws CheckException, InterruptedException {
         int retryCounter = 100;
         Throwable laseException = new RuntimeException("Ouh, no way");
-        while (retryCounter > 0) {
-            LOGGER.info("Commit orderId {} depending on {} at thread {}", orderId, dependsOnOrderId, Thread.currentThread().getName());
-            try {
-                CheckResults checkResults = getWrite().commitTransactionInOrder(tx, orderId, dependsOnOrderId);
-                //CheckResults checkResults = getWrite().commitTransaction(tx);
-                LOGGER.info("Committed orderId {} depending on {} at thread {}", orderId, dependsOnOrderId, Thread.currentThread().getName());
-                return checkResults;
-            } catch (com.tomtom.cpu.coredb.common.service.exception.ConcurrentObjectModificationException comex) {
-                LOGGER.info("Conflict detected, dont' try to commit it any more orderId {} depending on {} at thread {}", orderId, dependsOnOrderId, Thread.currentThread().getName());
-                return null;
-            } catch (Throwable x) {
-                LOGGER.info("ERROR while Committed orderId {} depending on {} at thread {}, {}", orderId, dependsOnOrderId, Thread.currentThread().getName(),
-                    x);
-                laseException = x;
-                if (x.getMessage().contains("TRANSACTION_ALREADY_COMMITTED")) {
-                    LOGGER.info("ERROR already Committed orderId {} depending on {} at thread {}, {}", orderId, dependsOnOrderId, Thread.currentThread().getName(),
-                        x);
+        StopWatch s = new StopWatch();
+        s.start();
+        try {
+            while (retryCounter > 0) {
+                LOGGER.info("Commit orderId {} depending on {} at thread {}", orderId, dependsOnOrderId, Thread.currentThread().getName());
+                try {
+                    CheckResults checkResults = getWrite().commitTransactionInOrder(tx, orderId, dependsOnOrderId);
+                    //CheckResults checkResults = getWrite().commitTransaction(tx);
+                    LOGGER.info("Committed orderId {} depending on {} at thread {}", orderId, dependsOnOrderId, Thread.currentThread().getName());
+                    return checkResults;
+                } catch (com.tomtom.cpu.coredb.common.service.exception.ConcurrentObjectModificationException comex) {
+                    LOGGER.info("Conflict detected, dont' try to commit it any more orderId {} depending on {} at thread {}", orderId, dependsOnOrderId,
+                        Thread.currentThread().getName());
                     return null;
+                } catch (Throwable x) {
+                    LOGGER.info("ERROR while Committed orderId {} depending on {} at thread {}, {}", orderId, dependsOnOrderId,
+                        Thread.currentThread().getName(),
+                        x);
+                    laseException = x;
+                    if (x.getMessage().contains("TRANSACTION_ALREADY_COMMITTED")) {
+                        LOGGER.info("ERROR already Committed orderId {} depending on {} at thread {}, {}", orderId, dependsOnOrderId,
+                            Thread.currentThread().getName(),
+                            x);
+                        return null;
+                    }
                 }
+                Thread.sleep(5000);
             }
-            Thread.sleep(5000);
+        } finally {
+            s.stop();
+            commitTotalTimeMS += s.getTotalTimeMillis();
+            LOGGER.info("COMMIT TIME: " + s.shortSummary());
         }
         throw new RuntimeException("Could not commit even ater 100 retries", laseException);
     }

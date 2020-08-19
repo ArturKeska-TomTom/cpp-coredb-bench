@@ -36,6 +36,7 @@ import com.tomtom.cpu.coredb.writeapi.impl.logical.EditOptionsFactory;
 import com.tomtom.cpu.coredb.writeapi.impl.logical.EditOptionsImpl;
 import com.tomtom.cpu.coredb.writeapi.impl.logical.NoCascadeStrategy;
 import com.tomtom.cpu.coredb.writeapi.logicaltransactions.editoptions.EditOptionName;
+import org.assertj.core.api.Java6Assertions;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -60,8 +61,12 @@ public class QueryTest
     private static DictionaryProperty[] specificFeatureWithMandatoryOfficialCodeProperties;
     private static DataConnection connection;
     //private static String COREDB_URL = "http://cpp-read.maps-contentops.amiefarm.com:8000/cobaz/coredb-main-ws/";
-    private static String COREDB_URL = "http://172.28.96.159:8080/coredb-main-ws/";
-    //private static String COREDB_URL = "http://cpp-camudev-tbdtst-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
+    //private static String COREDB_URL = "http://172.28.96.159:8080/coredb-main-ws/";
+    //private static String COREDB_URL = "http://localhost:8080/coredb-main-ws/";
+
+    //private static String COREDB_URL = "http://172.28.108.89:8080/coredb-main-ws/";
+    private static String COREDB_URL = "http://cpp-camudev-tbdtst-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
+    //private static String COREDB_URL ="http://cpp-camudev-commit-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
 
     //private static String COREDB_URL ="http://cpp-camudev-commit-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
     //private static String COREDB_URL = "http://cppedit-corewslrw.maps-india-contentops.amiefarm.com/coredb-main-ws";
@@ -461,8 +466,8 @@ public class QueryTest
         String orderId = "ORDER_";
         String dependsOnOrderId = null;
 
-        int rows = 12;
-        int cols = 2;
+        int rows = 20;
+        int cols = 20;
 
         Branch branch = getWrite().createDisconnectedBranch();
 
@@ -480,30 +485,76 @@ public class QueryTest
             .stream()
             .map(f -> (ThrowingSupplier<CheckResults, Exception>)() -> f.get())
             .map(thf -> thf.uncheck().get())
+            .filter(Objects::nonNull)
             .filter(result -> result.getCheckStatus() != CheckResults.STATUS.OK)
             .findAny();
 
         anyError.ifPresent(result -> assertThat(result.getCheckStatus()).isEqualTo(CheckResults.STATUS.OK));
+
+        Version version = connection.getJournalInterface().getCurrentVersion(branch);
+        Java6Assertions.assertThat(version.getJournalVersion()).isEqualTo(rows * cols);
     }
 
     private ThrowingSupplier<CheckResults, Exception> createEditFuture(Branch branch, String orderId, int cols, int i, int n) {
         LOGGER.info("Create feature with orderId {} row {} col {} at thread {}" , i, n, Thread.currentThread().getName());
-        int shift =  50000;
-        int x0 = 5788 + i * shift;
-        int y0 = 499 + shift * n;
+        int shift =  500;
+        int x0 = 50000 + i * shift;
+        int y0 = 4 + shift * n;
         Coordinate[] coordinates =
             {new Coordinate(x0, y0), new Coordinate(x0 + 1, y0 + 1)};
         return createGeometryInTx(branch, orderId + (i * cols + n), n == 0 ? null : orderId + (i * cols), coordinates);
     }
 
     private ThrowingSupplier<CheckResults, Exception> createGeometryInTx(Branch branch, String orderId, String dependsOnOrderId, Coordinate[] coordinates) {
-        Transaction tx = getWrite().newTransaction(branch);
-        createAndGetCreatedFeatures(tx, Arrays.asList(coordinates));
+
+        Transaction tx = createTransactonWithRetires(branch, coordinates);
 
         return () -> {
-            LOGGER.info("Commit orderId {} depending on {} at thread {}" ,orderId, dependsOnOrderId, Thread.currentThread().getName());
-            return getWrite().commitTransactionInOrder(tx, orderId, dependsOnOrderId);
+            return commitWithRetry(orderId, dependsOnOrderId, tx);
         };
+    }
+
+    private Transaction createTransactonWithRetires(Branch branch, Coordinate[] coordinates) {
+        int retryCounter = 100;
+        Throwable laseException = new RuntimeException("Ouh, no way");
+        while (retryCounter > 0) {
+            try {
+                Transaction tx = getWrite().newTransaction(branch);
+                createAndGetCreatedFeatures(tx, Arrays.asList(coordinates));
+                return tx;
+            } catch (Throwable t) {
+                laseException = t;
+            }
+        }
+        throw new RuntimeException("Could not create edit even ater 100 retries", laseException);
+    }
+
+    private CheckResults commitWithRetry(String orderId, String dependsOnOrderId, Transaction tx) throws CheckException, InterruptedException {
+        int retryCounter = 100;
+        Throwable laseException = new RuntimeException("Ouh, no way");
+        while (retryCounter > 0) {
+            LOGGER.info("Commit orderId {} depending on {} at thread {}", orderId, dependsOnOrderId, Thread.currentThread().getName());
+            try {
+                CheckResults checkResults = getWrite().commitTransactionInOrder(tx, orderId, dependsOnOrderId);
+                //CheckResults checkResults = getWrite().commitTransaction(tx);
+                LOGGER.info("Committed orderId {} depending on {} at thread {}", orderId, dependsOnOrderId, Thread.currentThread().getName());
+                return checkResults;
+            } catch (com.tomtom.cpu.coredb.common.service.exception.ConcurrentObjectModificationException comex) {
+                LOGGER.info("Conflict detected, dont' try to commit it any more orderId {} depending on {} at thread {}", orderId, dependsOnOrderId, Thread.currentThread().getName());
+                return null;
+            } catch (Throwable x) {
+                LOGGER.info("ERROR while Committed orderId {} depending on {} at thread {}, {}", orderId, dependsOnOrderId, Thread.currentThread().getName(),
+                    x);
+                laseException = x;
+                if (x.getMessage().contains("TRANSACTION_ALREADY_COMMITTED")) {
+                    LOGGER.info("ERROR already Committed orderId {} depending on {} at thread {}, {}", orderId, dependsOnOrderId, Thread.currentThread().getName(),
+                        x);
+                    return null;
+                }
+            }
+            Thread.sleep(5000);
+        }
+        throw new RuntimeException("Could not commit even ater 100 retries", laseException);
     }
 
     private void createAndGetCreatedFeatures(final Transaction tx, final List<Coordinate> geometry) {
