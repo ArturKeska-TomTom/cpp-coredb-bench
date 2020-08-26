@@ -71,8 +71,10 @@ public class CommitingTest
     //private static String COREDB_URL = "http://172.28.96.159:8080/coredb-main-ws/";
     //private static String COREDB_URL = "http://localhost:8080/coredb-main-ws/";
 
-    //private static String COREDB_URL = "http://172.28.108.89:8080/coredb-main-ws/";
-    private static String COREDB_URL = "http://cpp-camudev-tbdtst-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
+    //private static String COREDB_URL = "http://osmml-commit.maps-contentops.amiefarm.com/coredb-main-ws/";
+
+    private static String COREDB_URL = getTestParameter("COREDB_URL", "http://172.29.23.234:8080/coredb-main-ws/");
+    //private static String COREDB_URL = "http://cpp-camudev-tbdtst-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
     //private static String COREDB_URL ="http://cpp-camudev-commit-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
 
     //private static String COREDB_URL ="http://cpp-camudev-commit-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
@@ -96,7 +98,9 @@ public class CommitingTest
     public static void init() throws DataConnectionException {
         connection = new DataConnectionImpl();
 
-        connection.connect(new ConnectionInfoImpl(COREDB_URL, UUID.randomUUID()));
+        UUID securityToken = UUID.randomUUID();
+        LOGGER.info("Connecting to " + COREDB_URL + " wihh security token " + securityToken);
+        connection.connect(new ConnectionInfoImpl(COREDB_URL, securityToken));
     }
 
 
@@ -131,9 +135,9 @@ public class CommitingTest
     @Test
     public void massiveCommitInOrderTest() throws Throwable {
 
-        int parentOrdersCount = getTestParameter("PARENTS", 20);
-        int dependantsCount = getTestParameter("DEPENDANTS", 20);
-        int repeat = getTestParameter("REPEAT", 20);
+        int parentOrdersCount = getTestParameter("PARENTS", 1);
+        int dependantsCount = getTestParameter("DEPENDANTS", 1);
+        int repeat = getTestParameter("REPEAT", 1);
 
 
 
@@ -152,8 +156,12 @@ public class CommitingTest
         }
     }
 
-    private Integer getTestParameter(String paramName, int defaultValue) {
+    private static Integer getTestParameter(String paramName, int defaultValue) {
         return Optional.ofNullable(System.getenv(paramName)).filter(Objects::nonNull).map(Integer::parseInt).orElse(defaultValue);
+    }
+
+    private static String getTestParameter(String paramName, String defaultValue) {
+        return Optional.ofNullable(System.getenv(paramName)).filter(Objects::nonNull).map(Object::toString).orElse(defaultValue);
     }
 
     private void performParalelCommits(int testNo, int rows, int cols) throws DataConnectionException {
