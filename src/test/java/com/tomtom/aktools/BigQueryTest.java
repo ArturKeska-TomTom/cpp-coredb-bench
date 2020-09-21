@@ -1,6 +1,7 @@
 package com.tomtom.aktools;
 
 import com.google.common.collect.ImmutableList;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import pl.touk.throwing.ThrowingRunnable;
@@ -24,6 +25,7 @@ public class BigQueryTest {
     private static String VMDS_JDBC_URL = ParamReader.getTestParameter("VMDS_JDBC_URL", "jdbc:postgresql://172.29.20.123/cpp");
     private static String VMDS_DB_USER = ParamReader.getTestParameter("VMDS_DB_USER", "cpp");
     private static String VMDS_DB_PASSWORD = ParamReader.getTestParameter("VMDS_DB_PASSWORD", "cpp");
+    private static String CONNECTION_RESET_QUERY  = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", "SELECT 0");
 
     class BVR {
 
@@ -138,6 +140,14 @@ public class BigQueryTest {
         // dump
         System.out.println("[QUERY]: NOOO_BIND: " + bigQueryWithoutBindings);
         System.out.println("[QUERY]: WITH_BIND: " + bigQueryWithBindings);
+    }
+
+    @After
+    public void after() throws SQLException {
+
+        Statement statement = db.createStatement();
+        statement.execute(CONNECTION_RESET_QUERY);
+        statement.close();
     }
 
 
