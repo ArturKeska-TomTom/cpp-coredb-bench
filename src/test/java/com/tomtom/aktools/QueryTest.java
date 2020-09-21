@@ -65,7 +65,7 @@ public class QueryTest
     //private static String COREDB_URL = "http://localhost:8080/coredb-main-ws/";
 
     //private static String COREDB_URL = "http://172.28.108.89:8080/coredb-main-ws/";
-    private static String COREDB_URL = "http://cpp-camudev-tbdtst-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
+    private static String COREDB_URL = "http://172.29.22.154:8080/coredb-main-ws/";
     //private static String COREDB_URL ="http://cpp-camudev-commit-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
 
     //private static String COREDB_URL ="http://cpp-camudev-commit-corews.maps-contentops.amiefarm.com/coredb-main-ws/";
