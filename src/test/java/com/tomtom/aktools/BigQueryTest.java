@@ -144,10 +144,6 @@ public class BigQueryTest {
 
     @After
     public void after() throws SQLException {
-
-        Statement statement = db.createStatement();
-        statement.execute(CONNECTION_RESET_QUERY);
-        statement.close();
     }
 
 
@@ -198,6 +194,7 @@ public class BigQueryTest {
         ResultSet res = statement.executeQuery(bigQueryWithoutBindings);
         res.next();
         res.close();
+        reset();
     }
 
 
@@ -231,6 +228,7 @@ public class BigQueryTest {
         ResultSet res = statement.executeQuery();
         res.next();
         res.close();
+        reset();
     }
 
 
@@ -263,5 +261,13 @@ public class BigQueryTest {
         ResultSet res = statement.executeQuery();
         res.next();
         res.close();
+        reset();
+    }
+
+    private void reset() throws SQLException {
+        Statement statement = db.createStatement();
+        statement.execute(CONNECTION_RESET_QUERY);
+        statement.close();
+
     }
 }
