@@ -16,10 +16,14 @@ import static org.assertj.core.api.Java6Assertions.assertThat;
 
 public class BigQueryTest {
 
-    private static final int FEATURES = 10000;
-    private static final int REPEAT = 10;
+    private static final int FEATURES = ParamReader.getTestParameter("FEATURES_PER_QUERY", 100);
+    private static final int REPEAT = ParamReader.getTestParameter("REPEAT", 10);
     private String bigQueryWithBindings;
     private String bigQueryWithUnnestAndBindings;
+
+    private static String VMDS_JDBC_URL = ParamReader.getTestParameter("VMDS_JDBC_URL", "jdbc:postgresql://172.29.20.123/cpp");
+    private static String VMDS_DB_USER = ParamReader.getTestParameter("VMDS_DB_USER", "cpp");
+    private static String VMDS_DB_PASSWORD = ParamReader.getTestParameter("VMDS_DB_PASSWORD", "cpp");
 
     class BVR {
 
@@ -102,7 +106,7 @@ public class BigQueryTest {
     @Before
     public void init() throws ClassNotFoundException, SQLException {
         this.getClass().getClassLoader().loadClass("org.postgresql.jdbc.PgConnection");
-        db = DriverManager.getConnection("jdbc:postgresql://172.29.20.123/cpp", "cpp", "cpp");
+        db = DriverManager.getConnection(VMDS_JDBC_URL, VMDS_DB_USER, VMDS_DB_PASSWORD);
 
         String readyUUIDS = IntStream.range(0, 2)
             .mapToObj(i -> UUID.randomUUID())
