@@ -238,7 +238,7 @@ public class BigQueryTest {
         Statement statement = vmdsConnection.createStatement();
         ResultSet res = statement.executeQuery(bigQueryWithoutBindings);
         res.next();
-        showExplain(res);
+        showExplain(res, "runInlinedQuery");
         res.close();
         reset();
         closeStatementConditionaly(statement);
@@ -296,7 +296,7 @@ public class BigQueryTest {
 
         ResultSet res = statement.executeQuery();
         res.next();
-        showExplain(res);
+        showExplain(res, "runPreparedStatement");
         res.close();
         reset();
         closeStatementConditionaly(statement);
@@ -344,7 +344,7 @@ public class BigQueryTest {
 
         ResultSet res = statement.executeQuery();
         res.next();
-        showExplain(res);
+        showExplain(res, "runPreparedStatementWithUnnest");
         res.close();
         reset();
     }
@@ -373,9 +373,9 @@ public class BigQueryTest {
             + ")";
     };
 
-    private static void showExplain(ResultSet resultSet) throws SQLException {
+    private static void showExplain(ResultSet resultSet, String tag) throws SQLException {
 
-        System.out.println("EXPLAIN ANALYZE:\n");
+        System.out.println("EXPLAIN ANALYZE /*TAG*/:\n".replaceAll("TAG", tag));
         while (resultSet.next()) {
             System.out.println(resultSet.getString(1));
         }
