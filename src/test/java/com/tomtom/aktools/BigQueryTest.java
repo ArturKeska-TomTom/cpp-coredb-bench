@@ -35,8 +35,8 @@ public class BigQueryTest {
     private static String CORESUP_DB_USER = ParamReader.getTestParameter("CORESUP_DB_USER", "cpp");
     private static String CORESUP_DB_PASSWORD = ParamReader.getTestParameter("CORESUP_DB_PASSWORD", "cpp");
 
-    private static int SMALL_BRANCHES_COUNT = ParamReader.getTestParameter("SMALL_BRANCHES_COUNT", 2);
-    private static int BIG_BRANCHES_COUNT = ParamReader.getTestParameter("BIG_BRANCHES_COUNT", 2);
+    private static int SMALL_BRANCHES_COUNT = ParamReader.getTestParameter("SMALL_BRANCHES_COUNT", 1);
+    private static int BIG_BRANCHES_COUNT = ParamReader.getTestParameter("BIG_BRANCHES_COUNT", 1);
 
     private static String CONNECTION_RESET_QUERY  = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", "SELECT 0");
     private static boolean CLOSE_STATEMENTS = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", false);
@@ -313,15 +313,13 @@ public class BigQueryTest {
         String bvrSelectorWithBindings = IntStream.range(0, bvrs.size())
             .mapToObj(i -> "((branch = ?::uuid) AND (version > ?::bigint) AND (version <= ?::bigint))")
             .collect(Collectors.joining(" OR "));
-        String featuresSelectorWithBinding = IntStream.range(0, FEATURES)
-            .mapToObj(i -> "(?)")
-            .collect(Collectors.joining(", "));
 
 
         String bigQueryWithUnnestAndBindings = "/*WIBIND*/" + queryBase;
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR", bvrSelectorWithBindings);
-        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("values \\$VALUES", "select unnest(?) fid");
+        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("values \\$VALUES", "select unnest(?) column1");
 
+        System.out.println(bigQueryWithUnnestAndBindings);
 
         PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithUnnestAndBindings);
         AtomicInteger n = new AtomicInteger(1);
