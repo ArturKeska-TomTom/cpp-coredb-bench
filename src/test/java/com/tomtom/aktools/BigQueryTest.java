@@ -238,7 +238,7 @@ public class BigQueryTest {
         bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$BVRSELECTOR", brancSel);
         bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$VALUES", readyUUIDS);
 
-        System.out.println(bigQueryWithoutBindings);
+        System.out.println("[INFO]: " + bigQueryWithoutBindings);
 
         Statement statement = vmdsConnection.createStatement();
         ResultSet res = statement.executeQuery(bigQueryWithoutBindings);
@@ -297,6 +297,7 @@ public class BigQueryTest {
             }))
             .forEach(t -> t.run());
 
+        System.out.println("[INFO]: " + bigQueryWithBindings);
         System.out.println("[INFO]: bound " + n.get() + " parameters");
 
         ResultSet res = statement.executeQuery();
@@ -318,8 +319,6 @@ public class BigQueryTest {
         String bigQueryWithUnnestAndBindings = "/*WIBIND*/" + queryBase;
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR", bvrSelectorWithBindings);
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("values \\$VALUES", "select unnest(?) column1");
-
-        System.out.println(bigQueryWithUnnestAndBindings);
 
         PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithUnnestAndBindings);
         AtomicInteger n = new AtomicInteger(1);
@@ -343,6 +342,7 @@ public class BigQueryTest {
             }))
             .forEach(t -> t.run());
 
+        System.out.println("[INFO]: " + bigQueryWithUnnestAndBindings);
         System.out.println("[INFO]: bound " + n.get() + " parameters");
 
         ResultSet res = statement.executeQuery();
