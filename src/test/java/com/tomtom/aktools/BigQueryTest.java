@@ -238,7 +238,7 @@ public class BigQueryTest {
         Statement statement = vmdsConnection.createStatement();
         ResultSet res = statement.executeQuery(bigQueryWithoutBindings);
         res.next();
-        System.out.println("EXPLAIN ANALYZE: \n" + res.getString(1));
+        showExplain(res);
         res.close();
         reset();
         closeStatementConditionaly(statement);
@@ -296,7 +296,7 @@ public class BigQueryTest {
 
         ResultSet res = statement.executeQuery();
         res.next();
-        System.out.println("EXPLAIN ANALYZE: \n" + res.getString(1));
+        showExplain(res);
         res.close();
         reset();
         closeStatementConditionaly(statement);
@@ -344,7 +344,7 @@ public class BigQueryTest {
 
         ResultSet res = statement.executeQuery();
         res.next();
-        System.out.println("EXPLAIN ANALYZE: \n" + res.getString(1));
+        showExplain(res);
         res.close();
         reset();
     }
@@ -372,4 +372,12 @@ public class BigQueryTest {
                 .collect(Collectors.joining("OR"))
             + ")";
     };
+
+    private static void showExplain(ResultSet resultSet) throws SQLException {
+
+        System.out.println("EXPLAIN ANALYZE:");
+        while (resultSet.next()) {
+            System.out.println(resultSet.getString(1));
+        }
+    }
 }
