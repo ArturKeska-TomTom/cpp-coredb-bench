@@ -38,7 +38,7 @@ public class BigQueryTest {
     private static int SMALL_BRANCHES_COUNT = ParamReader.getTestParameter("SMALL_BRANCHES_COUNT", 1);
     private static int BIG_BRANCHES_COUNT = ParamReader.getTestParameter("BIG_BRANCHES_COUNT", 1);
 
-    private static String CONNECTION_RESET_QUERY  = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", "SELECT 0");
+    private static String CONNECTION_RESET_QUERY = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", "SELECT 0");
     private static boolean CLOSE_STATEMENTS = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", false);
 
     private static String SINGLE_QUERY_TEMPLATE = ParamReader.getTestParameter("SINGLE_QUERY_TEMPLATE", "with data as (values $VALUES)\n"
@@ -67,54 +67,77 @@ public class BigQueryTest {
         + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)"
         + ") as subq\n\n");
 
-    private static String SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE = ParamReader.getTestParameter("SINGLE_QUERY_TEMPLATE", "with data as (values $VALUES)\n"
-        + "select feature_id, branch, version\n"
-        + "from\n"
-        + " (\n"
-        + " select\n"
-        + "  f.id as feature_id, f.branch, f.version\n"
-        + " from\n"
-        + "  vmds_r2.feature f\n"
-        + " where\n"
-        + "  ($BVRSELECTOR_BIG)"
-        + " AND\n"
-        + " f.id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) \n"
+    private static String SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE =
+        ParamReader.getTestParameter("SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE", "with data as (values $VALUES)\n"
+            + "select feature_id, branch, version\n"
+            + "from\n"
+            + " (\n"
+            + " select\n"
+            + "  f.id as feature_id, f.branch, f.version\n"
+            + " from\n"
+            + "  vmds_r2.feature f\n"
+            + " where\n"
+            + "  ($BVRSELECTOR_BIG)"
+            + " AND\n"
+            + " f.id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) \n"
 
-        + " union\n"
+            + " union\n"
 
-        + " select\n"
-        + "  f.id as feature_id, f.branch, f.version\n"
-        + " from\n"
-        + "  vmds_r2.feature f\n"
-        + " where\n"
-        + "  ($BVRSELECTOR_SMALL)"
-        + " AND\n"
-        + " f.id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)  \n"
+            + " select\n"
+            + "  f.id as feature_id, f.branch, f.version\n"
+            + " from\n"
+            + "  vmds_r2.feature f\n"
+            + " where\n"
+            + "  ($BVRSELECTOR_SMALL)"
+            + " AND\n"
+            + " f.id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)  \n"
 
-        + " union\n"
+            + " union\n"
 
-        + " select\n"
-        + "  fpe.feature_id, fpe.branch, fpe.version\n"
-        + " from\n"
-        + "  vmds_r2.feature_property_entry fpe\n"
-        + " where\n"
-        + "  ($BVRSELECTOR_BIG)"
-        + " AND\n"
-        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) "
-        + ""
+            + " select\n"
+            + "  fpe.feature_id, fpe.branch, fpe.version\n"
+            + " from\n"
+            + "  vmds_r2.feature_property_entry fpe\n"
+            + " where\n"
+            + "  ($BVRSELECTOR_BIG)"
+            + " AND\n"
+            + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) "
+            + ""
 
-        + " union\n"
+            + " union\n"
 
-        + " select\n"
-        + "  fpe.feature_id, fpe.branch, fpe.version\n"
-        + " from\n"
-        + "  vmds_r2.feature_property_entry fpe\n"
-        + " where\n"
-        + "  ($BVRSELECTOR_SMALL)"
-        + " AND\n"
-        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) "
+            + " select\n"
+            + "  fpe.feature_id, fpe.branch, fpe.version\n"
+            + " from\n"
+            + "  vmds_r2.feature_property_entry fpe\n"
+            + " where\n"
+            + "  ($BVRSELECTOR_SMALL)"
+            + " AND\n"
+            + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) "
 
-        + ") as sq\n\n");
+            + ") as sq\n\n");
+
+    private static String SINGLE_QUERY_TEMPLATE_WITH_CTE_BRANCHES = ParamReader.getTestParameter("SINGLE_QUERY_TEMPLATE_WITH_CTE_BRANCHES",
+        "with data as (values $VALUES), \n"
+            + " branchquery as ("
+            + " select\n"
+            + "  f.id as feature_id, f.branch, f.version\n"
+            + " from\n"
+            + "  vmds_r2.feature f\n"
+            + " where\n"
+            + "  ($BVRSELECTOR)"
+            + ")"
+            + " SELECT * from branchquery where id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) \n"
+            + " union\n"
+            + " select\n"
+            + "  fpe.feature_id, fpe.branch, fpe.version\n"
+            + " from\n"
+            + "  vmds_r2.feature_property_entry fpe\n"
+            + " where\n"
+            + "  ($BVRSELECTOR)"
+            + " AND\n"
+            + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)"
+            + ") as subq\n\n");
 
     class BVR {
 
@@ -141,12 +164,16 @@ public class BigQueryTest {
     public ExternalResource performanceLogger = new ExternalResource() {
 
         @Override
-        protected void before() throws Throwable {}
+        protected void before() throws Throwable {
+
+        }
 
         @Override public org.junit.runners.model.Statement apply(org.junit.runners.model.Statement base, Description description) {
 
             return new org.junit.runners.model.Statement() {
+
                 @Override public void evaluate() throws Throwable {
+
                     for (int i = 0; i < REPEAT; i++) {
                         base.evaluate();
                     }
@@ -155,31 +182,32 @@ public class BigQueryTest {
         }
 
         @Override
-        protected void after() {}
+        protected void after() {
+
+        }
     };
 
     List<BVR> bvrs = ImmutableList.of(
-        new BVR("3296e81d-c113-4f3b-9316-89aaaf6ad5a6",1915,1920),
-        new BVR("97e9ce99-a704-48a9-9509-8954235e78d4",3944,3947),
-        new BVR("74434384-bebf-46b1-be28-356eb5afad6b",8607,8610),
-        new BVR("bb5f2f18-089a-40d8-8e55-83d1883eadf3",15672,15675),
-        new BVR("d5e9dbf4-e38f-436b-a22c-cedddd0f74a5",15726,15729),
-        new BVR("4bd6acc5-06dc-4953-b1ac-6d541ab8eaab",21640,21643),
-        new BVR("69d35f44-0fa5-4623-8964-f3a5231ffe65",24241,24250),
-        new BVR("8e15ef8d-8d07-4dd5-a6d8-5fc5b241c68b",34917,34920),
-        new BVR("04035f45-46c4-4211-9024-25478b5cc9ca",38785,38788),
-        new BVR("12f5a9a3-bee2-4db0-b514-756dd00c9647",38943,38946),
-        new BVR("efbb0a09-5198-49ac-8492-45c7b9e2ce00",49355,49358),
-        new BVR("6e9668f2-716f-4742-9255-93566fbbf4ec",54320,54323),
-        new BVR("c5f71617-a995-47a2-93ad-748982eed0a0",93193,93201),
-        new BVR("406177f1-8e2f-4e41-b1e8-420a26b3e940",94579,94582),
-        new BVR("b24451ab-d5e5-4d77-80b2-1160f14fdc97",95275,95282),
-        new BVR("aedd6e84-121f-4ac8-b037-196d8062dbfb",101330,101336),
-        new BVR("c1c024b5-d5b2-41e2-9d83-a001125e62f7",108705,108713));
+        new BVR("3296e81d-c113-4f3b-9316-89aaaf6ad5a6", 1915, 1920),
+        new BVR("97e9ce99-a704-48a9-9509-8954235e78d4", 3944, 3947),
+        new BVR("74434384-bebf-46b1-be28-356eb5afad6b", 8607, 8610),
+        new BVR("bb5f2f18-089a-40d8-8e55-83d1883eadf3", 15672, 15675),
+        new BVR("d5e9dbf4-e38f-436b-a22c-cedddd0f74a5", 15726, 15729),
+        new BVR("4bd6acc5-06dc-4953-b1ac-6d541ab8eaab", 21640, 21643),
+        new BVR("69d35f44-0fa5-4623-8964-f3a5231ffe65", 24241, 24250),
+        new BVR("8e15ef8d-8d07-4dd5-a6d8-5fc5b241c68b", 34917, 34920),
+        new BVR("04035f45-46c4-4211-9024-25478b5cc9ca", 38785, 38788),
+        new BVR("12f5a9a3-bee2-4db0-b514-756dd00c9647", 38943, 38946),
+        new BVR("efbb0a09-5198-49ac-8492-45c7b9e2ce00", 49355, 49358),
+        new BVR("6e9668f2-716f-4742-9255-93566fbbf4ec", 54320, 54323),
+        new BVR("c5f71617-a995-47a2-93ad-748982eed0a0", 93193, 93201),
+        new BVR("406177f1-8e2f-4e41-b1e8-420a26b3e940", 94579, 94582),
+        new BVR("b24451ab-d5e5-4d77-80b2-1160f14fdc97", 95275, 95282),
+        new BVR("aedd6e84-121f-4ac8-b037-196d8062dbfb", 101330, 101336),
+        new BVR("c1c024b5-d5b2-41e2-9d83-a001125e62f7", 108705, 108713));
 
     private List<BVR> bigBVRS;
     private List<BVR> smallBVRS;
-
 
     final String singleQueryBase = "explain analyze " + SINGLE_QUERY_TEMPLATE;
     final String separateBrancehsQueryBase = "explain analyze " + SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE;
@@ -202,8 +230,8 @@ public class BigQueryTest {
 
     @After
     public void after() throws SQLException {
-    }
 
+    }
 
     @Test
     public void run_selec1() throws SQLException {
@@ -231,9 +259,9 @@ public class BigQueryTest {
         runPreparedStatementWithUnnest();
     }
 
-
     @Test
     public void test_runPreparedStatementWithUnnest_SeparateBigAndSmallBrances() throws SQLException {
+
         runPreparedStatementWithUnnest_SeparateBigAndSmallBrances();
     }
 
@@ -242,8 +270,6 @@ public class BigQueryTest {
 
         assertThat(bvrs).hasSize(SMALL_BRANCHES_COUNT + BIG_BRANCHES_COUNT);
     }
-
-
 
     private List<BVR> bvrProbe(boolean bigBranches, int count) throws SQLException {
 
@@ -261,7 +287,7 @@ public class BigQueryTest {
         while (dbResult.next()) {
             UUID branchUUID = UUID.fromString(dbResult.getString(1));
             long toVersion = dbResult.getLong(2);
-                bvs.add(new BranchVersion(branchUUID, toVersion));
+            bvs.add(new BranchVersion(branchUUID, toVersion));
         }
 
         dbResult.close();
@@ -284,7 +310,9 @@ public class BigQueryTest {
                 fromVersions.put(branch, toVer);
             }
 
-            return bvs.stream().map(bv -> new BVR(bv.getBranchId(), fromVersions.get(bv.getBranchId().toString()), bv.getVersion())).collect(Collectors.toList());
+            return bvs.stream()
+                .map(bv -> new BVR(bv.getBranchId(), fromVersions.get(bv.getBranchId().toString()), bv.getVersion()))
+                .collect(Collectors.toList());
         } finally {
             statement.close();
         }
@@ -315,7 +343,6 @@ public class BigQueryTest {
         closeStatementConditionaly(statement);
     }
 
-
     private void execSelect1(Connection connection) throws SQLException {
 
         Statement statement = connection.createStatement();
@@ -324,7 +351,6 @@ public class BigQueryTest {
         assertThat(res.getInt(1)).isEqualTo(1);
         res.close();
     }
-
 
     private void runPreparedStatement() throws SQLException {
 
@@ -338,7 +364,6 @@ public class BigQueryTest {
         String bigQueryWithBindings = "/*WIBIND*/" + singleQueryBase;
         bigQueryWithBindings = bigQueryWithBindings.replaceAll("\\$BVRSELECTOR", bvrSelectorWithBindings);
         bigQueryWithBindings = bigQueryWithBindings.replaceAll("\\$VALUES", featuresSelectorWithBinding);
-
 
         PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithBindings);
         AtomicInteger n = new AtomicInteger(1);
@@ -374,13 +399,11 @@ public class BigQueryTest {
         closeStatementConditionaly(statement);
     }
 
-
     private void runPreparedStatementWithUnnest() throws SQLException {
 
         String bvrSelectorWithBindings = IntStream.range(0, bvrs.size())
             .mapToObj(i -> "((branch = ?::uuid) AND (version > ?::bigint) AND (version <= ?::bigint))")
             .collect(Collectors.joining(" OR "));
-
 
         String bigQueryWithUnnestAndBindings = "/*WIBIND*/" + singleQueryBase;
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR", bvrSelectorWithBindings);
@@ -418,8 +441,6 @@ public class BigQueryTest {
         reset();
     }
 
-
-
     private void runPreparedStatementWithUnnest_SeparateBigAndSmallBrances() throws SQLException {
 
         String bvrSelectorWithBindingsBIG = IntStream.range(0, bigBVRS.size())
@@ -428,7 +449,6 @@ public class BigQueryTest {
         String bvrSelectorWithBindingsSMALL = IntStream.range(0, smallBVRS.size())
             .mapToObj(i -> "((branch = ?::uuid) AND (version > ?::bigint) AND (version <= ?::bigint))")
             .collect(Collectors.joining(" OR "));
-
 
         String bigQueryWithUnnestAndBindings = "/*WIBIND-SmallBig*/" + separateBrancehsQueryBase;
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR_BIG", bvrSelectorWithBindingsBIG);
@@ -441,7 +461,7 @@ public class BigQueryTest {
         Array featureIds = vmdsConnection.createArrayOf("text", IntStream.range(0, FEATURES).mapToObj(i -> UUID.randomUUID().toString()).toArray());
         statement.setArray(n.incrementAndGet() - 1, featureIds);
 
-        for (int p = 0; p < 2; p ++) {
+        for (int p = 0; p < 2; p++) {
             IntStream.range(0, bigBVRS.size())
                 .mapToObj(i -> ThrowingRunnable.unchecked(() -> {
                     statement.setString(n.incrementAndGet() - 1, bvrs.get(i).branch.toString());
@@ -470,18 +490,21 @@ public class BigQueryTest {
     }
 
     private void reset() throws SQLException {
+
         Statement statement = vmdsConnection.createStatement();
         statement.execute(CONNECTION_RESET_QUERY);
         statement.close();
     }
 
     private void closeStatementConditionaly(Statement statement) throws SQLException {
+
         if (CLOSE_STATEMENTS) {
             statement.close();
         }
     }
 
     private static String createBranchSelector(List<BVR> bvrs) {
+
         return "(" +
             bvrs.stream()
                 .map(bvr -> "((branch = '$BRANCH'::uuid) AND (version > '$FROM'::bigint) AND (version <= '$TO'::bigint))"
@@ -491,7 +514,9 @@ public class BigQueryTest {
                 )
                 .collect(Collectors.joining("OR"))
             + ")";
-    };
+    }
+
+    ;
 
     private static void showExplain(ResultSet resultSet, String tag) throws SQLException {
 
