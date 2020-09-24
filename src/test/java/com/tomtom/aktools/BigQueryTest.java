@@ -68,7 +68,7 @@ public class BigQueryTest {
         + ") as subq\n\n");
 
     private static String SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE =
-        ParamReader.getTestParameter("SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE", "with data as (values $VALUES)\n"
+        ParamReader.getTestParameter("SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE", "with data as materialized (values $VALUES)\n"
             + "select feature_id, branch, version\n"
             + "from\n"
             + " (\n"
@@ -116,28 +116,6 @@ public class BigQueryTest {
             + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) "
 
             + ") as sq\n\n");
-
-    private static String SINGLE_QUERY_TEMPLATE_WITH_CTE_BRANCHES = ParamReader.getTestParameter("SINGLE_QUERY_TEMPLATE_WITH_CTE_BRANCHES",
-        "with data as materialized (values $VALUES), \n"
-            + " branchquery as ("
-            + " select\n"
-            + "  f.id as feature_id, f.branch, f.version\n"
-            + " from\n"
-            + "  vmds_r2.feature f\n"
-            + " where\n"
-            + "  ($BVRSELECTOR)"
-            + ")"
-            + " SELECT * from branchquery where id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) \n"
-            + " union\n"
-            + " select\n"
-            + "  fpe.feature_id, fpe.branch, fpe.version\n"
-            + " from\n"
-            + "  vmds_r2.feature_property_entry fpe\n"
-            + " where\n"
-            + "  ($BVRSELECTOR)"
-            + " AND\n"
-            + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)"
-            + ") as subq\n\n");
 
     class BVR {
 
