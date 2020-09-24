@@ -24,8 +24,8 @@ import static org.assertj.core.api.Java6Assertions.assertThat;
 
 public class BigQueryTest {
 
-    private static final int FEATURES = ParamReader.getTestParameter("FEATURES_PER_QUERY", 100);
-    private static final int REPEAT = ParamReader.getTestParameter("REPEAT", 10);
+    private static final int FEATURES = ParamReader.getTestParameter("FEATURES_PER_QUERY", 10);
+    private static final int REPEAT = ParamReader.getTestParameter("REPEAT", 1);
 
     private static String VMDS_JDBC_URL = ParamReader.getTestParameter("VMDS_JDBC_URL", "jdbc:postgresql://172.29.20.123/cpp");
     private static String VMDS_DB_USER = ParamReader.getTestParameter("VMDS_DB_USER", "cpp");
@@ -118,8 +118,8 @@ public class BigQueryTest {
         + " where\n"
         + "  ($BVRSELECTOR)"
         + " AND\n"
-        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)  ) ids"
-        + "union\n"
+        + " f.id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) \n"
+        + " union\n"
         + " select\n"
         + "  fpe.feature_id, fpe.branch, fpe.version\n"
         + " from\n"
@@ -127,7 +127,7 @@ public class BigQueryTest {
         + " where\n"
         + "  ($BVRSELECTOR)"
         + " AND\n"
-        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)  ) ids"
+        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)"
         + ") as subq\n\n";
     private Connection vmdsConnection;
     private Connection coresupConnection;
@@ -238,6 +238,7 @@ public class BigQueryTest {
         bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$BVRSELECTOR", brancSel);
         bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$VALUES", readyUUIDS);
 
+        System.out.println(bigQueryWithoutBindings);
 
         Statement statement = vmdsConnection.createStatement();
         ResultSet res = statement.executeQuery(bigQueryWithoutBindings);
