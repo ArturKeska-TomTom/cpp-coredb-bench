@@ -104,7 +104,7 @@ public class BigQueryTest {
 
 
 
-    final String queryBase = "with data as (values $VALUES)\n"
+    final String queryBase = "explain analyze with data as (values $VALUES)\n"
         + "select\n"
         + " feature_id,\n"
         + " branch,\n"
@@ -238,6 +238,7 @@ public class BigQueryTest {
         Statement statement = vmdsConnection.createStatement();
         ResultSet res = statement.executeQuery(bigQueryWithoutBindings);
         res.next();
+        System.out.println("EXPLAIN ANALYZE: \n" + res.getString(1));
         res.close();
         reset();
         closeStatementConditionaly(statement);
@@ -295,6 +296,7 @@ public class BigQueryTest {
 
         ResultSet res = statement.executeQuery();
         res.next();
+        System.out.println("EXPLAIN ANALYZE: \n" + res.getString(1));
         res.close();
         reset();
         closeStatementConditionaly(statement);
@@ -342,6 +344,7 @@ public class BigQueryTest {
 
         ResultSet res = statement.executeQuery();
         res.next();
+        System.out.println("EXPLAIN ANALYZE: \n" + res.getString(1));
         res.close();
         reset();
     }
