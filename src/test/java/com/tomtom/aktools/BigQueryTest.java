@@ -210,7 +210,7 @@ public class BigQueryTest {
     private List<BVR> smallBVRS;
 
     final String singleQueryBase = "explain analyze " + SINGLE_QUERY_TEMPLATE;
-    final String separateBrancehsQueryBase = "explain analyze " + SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE;
+    final String separateBranchesQueryBase = "explain analyze " + SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE;
     private Connection vmdsConnection;
     private Connection coresupConnection;
 
@@ -260,9 +260,9 @@ public class BigQueryTest {
     }
 
     @Test
-    public void test_runPreparedStatementWithUnnest_SeparateBigAndSmallBrances() throws SQLException {
+    public void test_runPreparedStatementWithUnnest_SeparateBigAndSmallBranches() throws SQLException {
 
-        runPreparedStatementWithUnnest_SeparateBigAndSmallBrances();
+        runPreparedStatementWithUnnest_SeparateBigAndSmallBranches();
     }
 
     @Test
@@ -441,7 +441,7 @@ public class BigQueryTest {
         reset();
     }
 
-    private void runPreparedStatementWithUnnest_SeparateBigAndSmallBrances() throws SQLException {
+    private void runPreparedStatementWithUnnest_SeparateBigAndSmallBranches() throws SQLException {
 
         String bvrSelectorWithBindingsBIG = IntStream.range(0, bigBVRS.size())
             .mapToObj(i -> "((branch = ?::uuid) AND (version > ?::bigint) AND (version <= ?::bigint))")
@@ -450,7 +450,7 @@ public class BigQueryTest {
             .mapToObj(i -> "((branch = ?::uuid) AND (version > ?::bigint) AND (version <= ?::bigint))")
             .collect(Collectors.joining(" OR "));
 
-        String bigQueryWithUnnestAndBindings = "/*WIBIND-SmallBig*/" + separateBrancehsQueryBase;
+        String bigQueryWithUnnestAndBindings = "/*WIBIND-SmallBig*/" + separateBranchesQueryBase;
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR_BIG", bvrSelectorWithBindingsBIG);
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR_SMALL", bvrSelectorWithBindingsSMALL);
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("values \\$VALUES", "select unnest(?) column1");
@@ -484,7 +484,7 @@ public class BigQueryTest {
 
         ResultSet res = statement.executeQuery();
         res.next();
-        showExplain(res, "runPreparedStatementWithUnnest_SeparateBigAndSmallBrances");
+        showExplain(res, "runPreparedStatementWithUnnest_SeparateBigAndSmallBranches");
         res.close();
         reset();
     }
