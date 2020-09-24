@@ -422,14 +422,17 @@ public class BigQueryTest {
 
     private void runPreparedStatementWithUnnest_SeparateBigAndSmallBrances() throws SQLException {
 
-        String bvrSelectorWithBindings = IntStream.range(0, bvrs.size())
+        String bvrSelectorWithBindingsBIG = IntStream.range(0, bigBVRS.size())
+            .mapToObj(i -> "((branch = ?::uuid) AND (version > ?::bigint) AND (version <= ?::bigint))")
+            .collect(Collectors.joining(" OR "));
+        String bvrSelectorWithBindingsSMALL = IntStream.range(0, smallBVRS.size())
             .mapToObj(i -> "((branch = ?::uuid) AND (version > ?::bigint) AND (version <= ?::bigint))")
             .collect(Collectors.joining(" OR "));
 
 
         String bigQueryWithUnnestAndBindings = "/*WIBIND-SmallBig*/" + separateBrancehsQueryBase;
-        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR_BIG", bvrSelectorWithBindings);
-        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR_SMALL", bvrSelectorWithBindings);
+        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR_BIG", bvrSelectorWithBindingsBIG);
+        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR_SMALL", bvrSelectorWithBindingsSMALL);
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("values \\$VALUES", "select unnest(?) column1");
 
         PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithUnnestAndBindings);
@@ -438,8 +441,16 @@ public class BigQueryTest {
         Array featureIds = vmdsConnection.createArrayOf("text", IntStream.range(0, FEATURES).mapToObj(i -> UUID.randomUUID().toString()).toArray());
         statement.setArray(n.incrementAndGet() - 1, featureIds);
 
-        for (int p = 0; p < 4; p ++) {
-            IntStream.range(0, bvrs.size())
+        for (int p = 0; p < 2; p ++) {
+            IntStream.range(0, bigBVRS.size())
+                .mapToObj(i -> ThrowingRunnable.unchecked(() -> {
+                    statement.setString(n.incrementAndGet() - 1, bvrs.get(i).branch.toString());
+                    statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verFrom);
+                    statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verTo);
+                }))
+                .forEach(t -> t.run());
+
+            IntStream.range(0, smallBVRS.size())
                 .mapToObj(i -> ThrowingRunnable.unchecked(() -> {
                     statement.setString(n.incrementAndGet() - 1, bvrs.get(i).branch.toString());
                     statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verFrom);
