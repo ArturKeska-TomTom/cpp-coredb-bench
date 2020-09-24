@@ -118,7 +118,7 @@ public class BigQueryTest {
             + ") as sq\n\n");
 
     private static String SINGLE_QUERY_TEMPLATE_WITH_CTE_BRANCHES = ParamReader.getTestParameter("SINGLE_QUERY_TEMPLATE_WITH_CTE_BRANCHES",
-        "with data as (values $VALUES), \n"
+        "with data as materialized (values $VALUES), \n"
             + " branchquery as ("
             + " select\n"
             + "  f.id as feature_id, f.branch, f.version\n"
