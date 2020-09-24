@@ -375,7 +375,7 @@ public class BigQueryTest {
 
     private static void showExplain(ResultSet resultSet) throws SQLException {
 
-        System.out.println("EXPLAIN ANALYZE:");
+        System.out.println("EXPLAIN ANALYZE:\n");
         while (resultSet.next()) {
             System.out.println(resultSet.getString(1));
         }
