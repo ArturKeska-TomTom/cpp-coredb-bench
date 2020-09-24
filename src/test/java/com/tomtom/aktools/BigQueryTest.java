@@ -41,7 +41,7 @@ public class BigQueryTest {
     private static String CONNECTION_RESET_QUERY  = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", "SELECT 0");
     private static boolean CLOSE_STATEMENTS = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", false);
 
-    private static String QUERY_TEMPLATE = ParamReader.getTestParameter("QUERY_TEMPLATE", "with data as (values $VALUES)\n"
+    private static String SINGLE_QUERY_TEMPLATE = ParamReader.getTestParameter("SINGLE_QUERY_TEMPLATE", "with data as (values $VALUES)\n"
         + "select\n"
         + " feature_id,\n"
         + " branch,\n"
@@ -66,6 +66,55 @@ public class BigQueryTest {
         + " AND\n"
         + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)"
         + ") as subq\n\n");
+
+    private static String SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE = ParamReader.getTestParameter("SINGLE_QUERY_TEMPLATE", "with data as (values $VALUES)\n"
+        + "select feature_id, branch, version\n"
+        + "from\n"
+        + " (\n"
+        + " select\n"
+        + "  f.id as feature_id, f.branch, f.version\n"
+        + " from\n"
+        + "  vmds_r2.feature f\n"
+        + " where\n"
+        + "  ($BVRSELECTOR_BIG)"
+        + " AND\n"
+        + " f.id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) \n"
+
+        + " union\n"
+
+        + " select\n"
+        + "  f.id as feature_id, f.branch, f.version\n"
+        + " from\n"
+        + "  vmds_r2.feature f\n"
+        + " where\n"
+        + "  ($BVRSELECTOR_SMALL)"
+        + " AND\n"
+        + " f.id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)  \n"
+
+        + " union\n"
+
+        + " select\n"
+        + "  fpe.feature_id, fpe.branch, fpe.version\n"
+        + " from\n"
+        + "  vmds_r2.feature_property_entry fpe\n"
+        + " where\n"
+        + "  ($BVRSELECTOR_BIG)"
+        + " AND\n"
+        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) "
+        + ""
+
+        + " union\n"
+
+        + " select\n"
+        + "  fpe.feature_id, fpe.branch, fpe.version\n"
+        + " from\n"
+        + "  vmds_r2.feature_property_entry fpe\n"
+        + " where\n"
+        + "  ($BVRSELECTOR_SMALL)"
+        + " AND\n"
+        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) "
+
+        + ") as sq\n\n");
 
     class BVR {
 
@@ -128,9 +177,12 @@ public class BigQueryTest {
         new BVR("aedd6e84-121f-4ac8-b037-196d8062dbfb",101330,101336),
         new BVR("c1c024b5-d5b2-41e2-9d83-a001125e62f7",108705,108713));
 
+    private List<BVR> bigBVRS;
+    private List<BVR> smallBVRS;
 
 
-    final String queryBase = "explain analyze " + QUERY_TEMPLATE;
+    final String singleQueryBase = "explain analyze " + SINGLE_QUERY_TEMPLATE;
+    final String separateBrancehsQueryBase = "explain analyze " + SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE;
     private Connection vmdsConnection;
     private Connection coresupConnection;
 
@@ -141,7 +193,11 @@ public class BigQueryTest {
         vmdsConnection = DriverManager.getConnection(VMDS_JDBC_URL, VMDS_DB_USER, VMDS_DB_PASSWORD);
         coresupConnection = DriverManager.getConnection(CORESUP_JDBC_URL, CORESUP_DB_USER, CORESUP_DB_PASSWORD);
 
-        bvrs = bvrProbe();
+        bigBVRS = bvrProbe(true, BIG_BRANCHES_COUNT);
+        smallBVRS = bvrProbe(false, SMALL_BRANCHES_COUNT);
+
+        bvrs = Lists.newArrayList(bigBVRS);
+        bvrs.addAll(smallBVRS);
     }
 
     @After
@@ -177,20 +233,28 @@ public class BigQueryTest {
 
 
     @Test
+    public void test_runPreparedStatementWithUnnest_SeparateBigAndSmallBrances() throws SQLException {
+        runPreparedStatementWithUnnest_SeparateBigAndSmallBrances();
+    }
+
+    @Test
     public void test_loadBranchesWithSpecifiedBranchStructure() throws SQLException {
 
         assertThat(bvrs).hasSize(SMALL_BRANCHES_COUNT + BIG_BRANCHES_COUNT);
     }
 
 
-    private List<BVR> bvrProbe() throws SQLException {
-        PreparedStatement statement = vmdsConnection.prepareStatement("with "
-            + "b1 as (select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where random()>0.2 order by size limit ?), "
-            + "b2 as (select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where random()>0.2 order by size desc limit ?) "
-            + "select branch, version from b1 union select branch, version from b2");
 
-        statement.setInt(1, SMALL_BRANCHES_COUNT);
-        statement.setInt(2, BIG_BRANCHES_COUNT);
+    private List<BVR> bvrProbe(boolean bigBranches, int count) throws SQLException {
+
+        String query =
+            "select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where random()>0.2 order by size $ORDER limit ?"
+                .replaceAll("\\$ORDER", bigBranches ? "desc" : "asc");
+        System.out.println(query);
+        PreparedStatement statement = vmdsConnection.prepareStatement(
+            query);
+
+        statement.setInt(1, count);
 
         ResultSet dbResult = statement.executeQuery();
         List<BranchVersion> bvs = Lists.newArrayList();
@@ -236,7 +300,7 @@ public class BigQueryTest {
 
         final String brancSel = createBranchSelector(bvrs);
 
-        String bigQueryWithoutBindings = "/*NOBIND*/" + queryBase;
+        String bigQueryWithoutBindings = "/*NOBIND*/" + singleQueryBase;
         bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$BVRSELECTOR", brancSel);
         bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$VALUES", readyUUIDS);
 
@@ -271,7 +335,7 @@ public class BigQueryTest {
             .mapToObj(i -> "(?)")
             .collect(Collectors.joining(", "));
 
-        String bigQueryWithBindings = "/*WIBIND*/" + queryBase;
+        String bigQueryWithBindings = "/*WIBIND*/" + singleQueryBase;
         bigQueryWithBindings = bigQueryWithBindings.replaceAll("\\$BVRSELECTOR", bvrSelectorWithBindings);
         bigQueryWithBindings = bigQueryWithBindings.replaceAll("\\$VALUES", featuresSelectorWithBinding);
 
@@ -318,7 +382,7 @@ public class BigQueryTest {
             .collect(Collectors.joining(" OR "));
 
 
-        String bigQueryWithUnnestAndBindings = "/*WIBIND*/" + queryBase;
+        String bigQueryWithUnnestAndBindings = "/*WIBIND*/" + singleQueryBase;
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR", bvrSelectorWithBindings);
         bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("values \\$VALUES", "select unnest(?) column1");
 
@@ -350,6 +414,46 @@ public class BigQueryTest {
         ResultSet res = statement.executeQuery();
         res.next();
         showExplain(res, "runPreparedStatementWithUnnest");
+        res.close();
+        reset();
+    }
+
+
+
+    private void runPreparedStatementWithUnnest_SeparateBigAndSmallBrances() throws SQLException {
+
+        String bvrSelectorWithBindings = IntStream.range(0, bvrs.size())
+            .mapToObj(i -> "((branch = ?::uuid) AND (version > ?::bigint) AND (version <= ?::bigint))")
+            .collect(Collectors.joining(" OR "));
+
+
+        String bigQueryWithUnnestAndBindings = "/*WIBIND-SmallBig*/" + separateBrancehsQueryBase;
+        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR_BIG", bvrSelectorWithBindings);
+        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR_SMALL", bvrSelectorWithBindings);
+        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("values \\$VALUES", "select unnest(?) column1");
+
+        PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithUnnestAndBindings);
+        AtomicInteger n = new AtomicInteger(1);
+
+        Array featureIds = vmdsConnection.createArrayOf("text", IntStream.range(0, FEATURES).mapToObj(i -> UUID.randomUUID().toString()).toArray());
+        statement.setArray(n.incrementAndGet() - 1, featureIds);
+
+        for (int p = 0; p < 4; p ++) {
+            IntStream.range(0, bvrs.size())
+                .mapToObj(i -> ThrowingRunnable.unchecked(() -> {
+                    statement.setString(n.incrementAndGet() - 1, bvrs.get(i).branch.toString());
+                    statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verFrom);
+                    statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verTo);
+                }))
+                .forEach(t -> t.run());
+        }
+
+        System.out.println("[INFO]: " + bigQueryWithUnnestAndBindings);
+        System.out.println("[INFO]: bound " + n.get() + " parameters");
+
+        ResultSet res = statement.executeQuery();
+        res.next();
+        showExplain(res, "runPreparedStatementWithUnnest_SeparateBigAndSmallBrances");
         res.close();
         reset();
     }
