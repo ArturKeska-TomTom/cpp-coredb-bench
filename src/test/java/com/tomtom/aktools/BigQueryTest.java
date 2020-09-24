@@ -41,6 +41,32 @@ public class BigQueryTest {
     private static String CONNECTION_RESET_QUERY  = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", "SELECT 0");
     private static boolean CLOSE_STATEMENTS = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", false);
 
+    private static String QUERY_TEMPLATE = ParamReader.getTestParameter("QUERY_TEMPLATE", "with data as (values $VALUES)\n"
+        + "select\n"
+        + " feature_id,\n"
+        + " branch,\n"
+        + " version\n"
+        + "from\n"
+        + " (\n"
+        + " select\n"
+        + "  f.id as feature_id, f.branch, f.version\n"
+        + " from\n"
+        + "  vmds_r2.feature f\n"
+        + " where\n"
+        + "  ($BVRSELECTOR)"
+        + " AND\n"
+        + " f.id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) \n"
+        + " union\n"
+        + " select\n"
+        + "  fpe.feature_id, fpe.branch, fpe.version\n"
+        + " from\n"
+        + "  vmds_r2.feature_property_entry fpe\n"
+        + " where\n"
+        + "  ($BVRSELECTOR)"
+        + " AND\n"
+        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)"
+        + ") as subq\n\n");
+
     class BVR {
 
         public BVR(UUID branch, long verFrom, long verTo) {
@@ -104,31 +130,7 @@ public class BigQueryTest {
 
 
 
-    final String queryBase = "explain analyze with data as (values $VALUES)\n"
-        + "select\n"
-        + " feature_id,\n"
-        + " branch,\n"
-        + " version\n"
-        + "from\n"
-        + " (\n"
-        + " select\n"
-        + "  f.id as feature_id, f.branch, f.version\n"
-        + " from\n"
-        + "  vmds_r2.feature f\n"
-        + " where\n"
-        + "  ($BVRSELECTOR)"
-        + " AND\n"
-        + " f.id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) \n"
-        + " union\n"
-        + " select\n"
-        + "  fpe.feature_id, fpe.branch, fpe.version\n"
-        + " from\n"
-        + "  vmds_r2.feature_property_entry fpe\n"
-        + " where\n"
-        + "  ($BVRSELECTOR)"
-        + " AND\n"
-        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)"
-        + ") as subq\n\n";
+    final String queryBase = "explain analyze " + QUERY_TEMPLATE;
     private Connection vmdsConnection;
     private Connection coresupConnection;
 
@@ -227,7 +229,7 @@ public class BigQueryTest {
 
     private void runInlinedQuery() throws SQLException {
 
-        String readyUUIDS = IntStream.range(0, 2)
+        String readyUUIDS = IntStream.range(0, FEATURES)
             .mapToObj(i -> UUID.randomUUID())
             .map(uuid -> "('" + uuid.toString() + "')")
             .collect(Collectors.joining(", "));
