@@ -285,7 +285,7 @@ public class BigQueryTest {
             .mapToObj(i -> ThrowingRunnable.unchecked(() -> {
                 statement.setString(n.incrementAndGet() - 1, bvrs.get(i).branch.toString());
                 statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verFrom);
-                statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verFrom);
+                statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verTo);
             }))
             .forEach(t -> t.run());
 
@@ -293,7 +293,7 @@ public class BigQueryTest {
             .mapToObj(i -> ThrowingRunnable.unchecked(() -> {
                 statement.setString(n.incrementAndGet() - 1, bvrs.get(i).branch.toString());
                 statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verFrom);
-                statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verFrom);
+                statement.setLong(n.incrementAndGet() - 1, bvrs.get(i).verTo);
             }))
             .forEach(t -> t.run());
 
