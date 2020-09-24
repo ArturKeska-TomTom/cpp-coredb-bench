@@ -117,6 +117,8 @@ public class BigQueryTest {
         + "  vmds_r2.feature f\n"
         + " where\n"
         + "  ($BVRSELECTOR)"
+        + " AND\n"
+        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)  )"
         + "union\n"
         + " select\n"
         + "  fpe.feature_id, fpe.branch, fpe.version\n"
@@ -124,6 +126,8 @@ public class BigQueryTest {
         + "  vmds_r2.feature_property_entry fpe\n"
         + " where\n"
         + "  ($BVRSELECTOR)"
+        + " AND\n"
+        + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA)  )"
         + ") as subq\n\n";
     private Connection vmdsConnection;
     private Connection coresupConnection;
