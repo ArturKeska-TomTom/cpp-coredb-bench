@@ -183,8 +183,8 @@ public class BigQueryTest {
 
     private List<BVR> bvrProbe() throws SQLException {
         PreparedStatement statement = vmdsConnection.prepareStatement("with "
-            + "b1 as (select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where random()>0.5 order by size limit ?), "
-            + "b2 as (select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where random()>0.5 order by size desc limit ?) "
+            + "b1 as (select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where random()>0.2 order by size limit ?), "
+            + "b2 as (select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where random()>0.2 order by size desc limit ?) "
             + "select branch, version from b1 union select branch, version from b2");
 
         statement.setInt(1, SMALL_BRANCHES_COUNT);
