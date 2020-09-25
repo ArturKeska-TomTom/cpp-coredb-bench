@@ -41,6 +41,8 @@ public class BigQueryTest {
     private static String CONNECTION_RESET_QUERY = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", "SELECT 0");
     private static boolean CLOSE_STATEMENTS = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", false);
 
+    private static boolean USE_REAL_BVRS = ParamReader.getTestParameter("USE_REAL_BVRS", true);
+
     private static String SINGLE_QUERY_TEMPLATE = ParamReader.getTestParameter("SINGLE_QUERY_TEMPLATE", "with data as (values $VALUES)\n"
         + "select\n"
         + " feature_id,\n"
@@ -202,8 +204,10 @@ public class BigQueryTest {
         bigBVRS = bvrProbe(true, BIG_BRANCHES_COUNT);
         smallBVRS = bvrProbe(false, SMALL_BRANCHES_COUNT);
 
-        bvrs = Lists.newArrayList(bigBVRS);
-        bvrs.addAll(smallBVRS);
+        if (!USE_REAL_BVRS) {
+            bvrs = Lists.newArrayList(bigBVRS);
+            bvrs.addAll(smallBVRS);
+        }
     }
 
     @After
@@ -248,6 +252,46 @@ public class BigQueryTest {
 
         assertThat(bvrs).hasSize(SMALL_BRANCHES_COUNT + BIG_BRANCHES_COUNT);
     }
+
+    @Test
+    public void test_preparedStatementWithUnnestWithoutVersionRanges() throws SQLException {
+
+        String bvrSelectorWithBindings = IntStream.range(0, bvrs.size())
+            .mapToObj(i -> "((branch = ?::uuid))")
+            .collect(Collectors.joining(" OR "));
+
+        String bigQueryWithUnnestAndBindings = "/*WIBIND*/" + singleQueryBase;
+        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("\\$BVRSELECTOR", bvrSelectorWithBindings);
+        bigQueryWithUnnestAndBindings = bigQueryWithUnnestAndBindings.replaceAll("values \\$VALUES", "select unnest(?) column1");
+
+        PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithUnnestAndBindings);
+        AtomicInteger n = new AtomicInteger(1);
+
+        Array featureIds = vmdsConnection.createArrayOf("text", IntStream.range(0, FEATURES).mapToObj(i -> UUID.randomUUID().toString()).toArray());
+        statement.setArray(n.incrementAndGet() - 1, featureIds);
+
+        IntStream.range(0, bvrs.size())
+            .mapToObj(i -> ThrowingRunnable.unchecked(() -> {
+                statement.setString(n.incrementAndGet() - 1, bvrs.get(i).branch.toString());
+            }))
+            .forEach(t -> t.run());
+
+        IntStream.range(0, bvrs.size())
+            .mapToObj(i -> ThrowingRunnable.unchecked(() -> {
+                statement.setString(n.incrementAndGet() - 1, bvrs.get(i).branch.toString());
+            }))
+            .forEach(t -> t.run());
+
+        System.out.println("[INFO]: " + bigQueryWithUnnestAndBindings);
+        System.out.println("[INFO]: bound " + n.get() + " parameters");
+
+        ResultSet res = statement.executeQuery();
+        res.next();
+        showExplain(res, "runPreparedStatementWithUnnest");
+        res.close();
+        reset();
+    }
+
 
     private List<BVR> bvrProbe(boolean bigBranches, int count) throws SQLException {
 
