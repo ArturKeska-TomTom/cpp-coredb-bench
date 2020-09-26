@@ -12,15 +12,13 @@ import org.junit.runner.Description;
 import pl.touk.throwing.ThrowingRunnable;
 
 import java.sql.*;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Java6Assertions.assertThat;
+import static pl.touk.throwing.ThrowingSupplier.unchecked;
 
 public class BigQueryTest {
 
@@ -188,6 +186,7 @@ public class BigQueryTest {
 
     private List<BVR> bigBVRS;
     private List<BVR> smallBVRS;
+    private List<UUID> featureUUIDs;
 
     final String singleQueryBase = "explain analyze " + SINGLE_QUERY_TEMPLATE;
     final String separateBranchesQueryBase = "explain analyze " + SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE;
@@ -208,6 +207,8 @@ public class BigQueryTest {
             bvrs = Lists.newArrayList(bigBVRS);
             bvrs.addAll(smallBVRS);
         }
+
+        featureUUIDs = featuresProbe(bvrs, 2000, 5000);
     }
 
     @After
@@ -249,8 +250,9 @@ public class BigQueryTest {
 
     @Test
     public void test_loadBranchesWithSpecifiedBranchStructure() throws SQLException {
-
-        assertThat(bvrs).hasSize(SMALL_BRANCHES_COUNT + BIG_BRANCHES_COUNT);
+        if (!USE_REAL_BVRS) {
+            assertThat(bvrs).hasSize(SMALL_BRANCHES_COUNT + BIG_BRANCHES_COUNT);
+        }
     }
 
     @Test
@@ -267,7 +269,7 @@ public class BigQueryTest {
         PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithUnnestAndBindings);
         AtomicInteger n = new AtomicInteger(1);
 
-        Array featureIds = vmdsConnection.createArrayOf("text", IntStream.range(0, FEATURES).mapToObj(i -> UUID.randomUUID().toString()).toArray());
+        Array featureIds = vmdsConnection.createArrayOf("text", featureUUIDs.stream().map(UUID::toString).toArray());
         statement.setArray(n.incrementAndGet() - 1, featureIds);
 
         IntStream.range(0, bvrs.size())
@@ -317,6 +319,29 @@ public class BigQueryTest {
         return getBranchFromVersions(bvs);
     }
 
+    private List<UUID> featuresProbe(List<BVR> bvrs, int realIdsCount, int totalIdsCount) throws SQLException {
+        String query = "with rnd_feature_select as (select id, floor(random()*100) r from vmds_r2.feature where branch = ANY(?::uuid[])) "
+            + "select id from rnd_feature_select order by r limit ?";
+        List<UUID> branchIds = bvrs.stream().map(bvr -> bvr.branch).collect(Collectors.toList());
+        Array dbBranchUUIDS = vmdsConnection.createArrayOf("text", branchIds.stream().toArray());
+
+        PreparedStatement statement = vmdsConnection.prepareStatement(query);
+        statement.setArray(1, dbBranchUUIDS);
+        statement.setInt(2, realIdsCount);
+
+        ResultSet res = statement.executeQuery();
+        List<UUID> fetureUUIDS = Lists.newArrayList();
+        while (res.next()) {
+            fetureUUIDS.add(UUID.fromString(res.getString(1)));
+        }
+        if (fetureUUIDS.size() < totalIdsCount) {
+            fetureUUIDS.addAll(
+                IntStream.range(0, totalIdsCount - fetureUUIDS.size()).mapToObj(i -> UUID.randomUUID()).collect(Collectors.toList())
+            );
+        }
+        return fetureUUIDS;
+    }
+
     private List<BVR> getBranchFromVersions(List<BranchVersion> bvs) throws SQLException {
 
         PreparedStatement statement = coresupConnection.prepareStatement("with b as (select unnest(ARRAY[?])::uuid branch) "
@@ -343,8 +368,7 @@ public class BigQueryTest {
 
     private void runInlinedQuery() throws SQLException {
 
-        String readyUUIDS = IntStream.range(0, FEATURES)
-            .mapToObj(i -> UUID.randomUUID())
+        String uuidsQuery = featureUUIDs.stream()
             .map(uuid -> "('" + uuid.toString() + "')")
             .collect(Collectors.joining(", "));
 
@@ -352,7 +376,7 @@ public class BigQueryTest {
 
         String bigQueryWithoutBindings = "/*NOBIND*/" + singleQueryBase;
         bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$BVRSELECTOR", brancSel);
-        bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$VALUES", readyUUIDS);
+        bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$VALUES", uuidsQuery);
 
         System.out.println("[INFO]: " + bigQueryWithoutBindings);
 
@@ -379,8 +403,8 @@ public class BigQueryTest {
         String bvrSelectorWithBindings = IntStream.range(0, bvrs.size())
             .mapToObj(i -> "((branch = ?::uuid) AND (version > ?::bigint) AND (version <= ?::bigint))")
             .collect(Collectors.joining(" OR "));
-        String featuresSelectorWithBinding = IntStream.range(0, FEATURES)
-            .mapToObj(i -> "(?)")
+        String featuresSelectorWithBinding = featureUUIDs.stream()
+            .map(i -> "(?)")
             .collect(Collectors.joining(", "));
 
         String bigQueryWithBindings = "/*WIBIND*/" + singleQueryBase;
@@ -390,8 +414,8 @@ public class BigQueryTest {
         PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithBindings);
         AtomicInteger n = new AtomicInteger(1);
 
-        IntStream.range(0, FEATURES)
-            .mapToObj(i -> ThrowingRunnable.unchecked(() -> statement.setString(n.incrementAndGet() - 1, UUID.randomUUID().toString())))
+        featureUUIDs.stream()
+            .map(uuid -> ThrowingRunnable.unchecked(() -> statement.setString(n.incrementAndGet() - 1, uuid.toString())))
             .forEach(t -> t.run());
 
         IntStream.range(0, bvrs.size())
@@ -434,7 +458,7 @@ public class BigQueryTest {
         PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithUnnestAndBindings);
         AtomicInteger n = new AtomicInteger(1);
 
-        Array featureIds = vmdsConnection.createArrayOf("text", IntStream.range(0, FEATURES).mapToObj(i -> UUID.randomUUID().toString()).toArray());
+        Array featureIds = vmdsConnection.createArrayOf("text", featureUUIDs.stream().map(UUID::toString).toArray());
         statement.setArray(n.incrementAndGet() - 1, featureIds);
 
         IntStream.range(0, bvrs.size())
@@ -480,7 +504,7 @@ public class BigQueryTest {
         PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithUnnestAndBindings);
         AtomicInteger n = new AtomicInteger(1);
 
-        Array featureIds = vmdsConnection.createArrayOf("text", IntStream.range(0, FEATURES).mapToObj(i -> UUID.randomUUID().toString()).toArray());
+        Array featureIds = vmdsConnection.createArrayOf("text", featureUUIDs.stream().map(UUID::toString).toArray());
         statement.setArray(n.incrementAndGet() - 1, featureIds);
 
         for (int p = 0; p < 2; p++) {
