@@ -39,7 +39,7 @@ public class BigQueryTest {
     private static String CONNECTION_RESET_QUERY = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", "SELECT 0");
     private static boolean CLOSE_STATEMENTS = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", false);
 
-    private static boolean USE_REAL_BVRS = ParamReader.getTestParameter("USE_REAL_BVRS", true);
+    private static boolean USE_REAL_BVRS = ParamReader.getTestParameter("USE_REAL_BVRS", false);
 
     private static String SINGLE_QUERY_TEMPLATE = ParamReader.getTestParameter("SINGLE_QUERY_TEMPLATE", "with data as (values $VALUES)\n"
         + "select\n"
@@ -289,7 +289,7 @@ public class BigQueryTest {
 
         ResultSet res = statement.executeQuery();
         res.next();
-        showExplain(res, "runPreparedStatementWithUnnest");
+        showExplain(res, "test_preparedStatementWithUnnestWithoutVersionRanges");
         res.close();
         reset();
     }
