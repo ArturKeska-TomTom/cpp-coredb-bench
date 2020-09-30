@@ -2,6 +2,7 @@ package com.tomtom.aktools;
 
 import com.google.common.collect.ImmutableList;
 import com.tomtom.cpu.coredb.id.index.BranchVersion;
+import org.apache.commons.lang3.ArrayUtils;
 import org.assertj.core.util.Lists;
 import org.junit.After;
 import org.junit.Before;
@@ -16,6 +17,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Java6Assertions.assertThat;
 import static pl.touk.throwing.ThrowingSupplier.unchecked;
@@ -25,7 +27,7 @@ public class BigQueryTest {
     private static final int FEATURES = ParamReader.getTestParameter("FEATURES_PER_QUERY", 10);
     private static final int REPEAT = ParamReader.getTestParameter("REPEAT", 1);
 
-    private static String VMDS_JDBC_URL = ParamReader.getTestParameter("VMDS_JDBC_URL", "jdbc:postgresql://172.29.20.123/cpp");
+    private static String VMDS_JDBC_URL = ParamReader.getTestParameter("VMDS_JDBC_URL", "jdbc:postgresql://172.29.22.153/cpp");
     private static String VMDS_DB_USER = ParamReader.getTestParameter("VMDS_DB_USER", "cpp");
     private static String VMDS_DB_PASSWORD = ParamReader.getTestParameter("VMDS_DB_PASSWORD", "cpp");
 
@@ -33,8 +35,8 @@ public class BigQueryTest {
     private static String CORESUP_DB_USER = ParamReader.getTestParameter("CORESUP_DB_USER", "cpp");
     private static String CORESUP_DB_PASSWORD = ParamReader.getTestParameter("CORESUP_DB_PASSWORD", "cpp");
 
-    private static int SMALL_BRANCHES_COUNT = ParamReader.getTestParameter("SMALL_BRANCHES_COUNT", 1);
-    private static int BIG_BRANCHES_COUNT = ParamReader.getTestParameter("BIG_BRANCHES_COUNT", 1);
+    private static int SMALL_BRANCHES_COUNT = ParamReader.getTestParameter("SMALL_BRANCHES_COUNT", 3);
+    private static int BIG_BRANCHES_COUNT = ParamReader.getTestParameter("BIG_BRANCHES_COUNT", 3);
 
     private static String CONNECTION_RESET_QUERY = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", "SELECT 0");
     private static boolean CLOSE_STATEMENTS = ParamReader.getTestParameter("CONNECTION_RESET_QUERY", false);
@@ -68,7 +70,7 @@ public class BigQueryTest {
         + ") as subq\n\n");
 
     private static String SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE =
-        ParamReader.getTestParameter("SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE", "with data as materialized (values $VALUES)\n"
+        ParamReader.getTestParameter("SEPARATED_BRANCHES_BY_SIZE_QUERY_TEMPLATE", "with data as (values $VALUES)\n"
             + "select feature_id, branch, version\n"
             + "from\n"
             + " (\n"
@@ -116,6 +118,20 @@ public class BigQueryTest {
             + " fpe.feature_id IN (SELECT CAST(data.column1 AS UUID) FROM DATA) "
 
             + ") as sq\n\n");
+
+
+    String pezetQueryfromGutek = "explain analyze with DATA as ($UUIDSQUERY)\n"
+        + " SELECT a.id, a.branch, a.version\n"
+        + " FROM vmds_r2.association a\n"
+        + " WHERE ($BVRSELECTOR)\n"
+        + "AND a.id = any (SELECT data.column1  FROM DATA)";
+
+    String fixedAttributesBranchSelector = " (\n"
+        + " ((a.branch = '2f52918a-f4e3-4962-b09a-fd8339684960'::uuid) AND (a.version > '10823'::bigint) AND (a.version <= '10826'::bigint))\n"
+        + "or  ((a.branch = '3764acaf-9b1e-414c-b595-6415712e40e0'::uuid) AND (a.version > '17928'::bigint) AND (a.version <= '17931'::bigint))\n"
+        + ")\n";
+
+    private List<UUID> associationUUIDs;
 
     class BVR {
 
@@ -208,7 +224,9 @@ public class BigQueryTest {
             bvrs.addAll(smallBVRS);
         }
 
-        featureUUIDs = featuresProbe(bvrs, 2000, 5000);
+        featureUUIDs = featuresProbe(bvrs, 10, 5000);
+
+        associationUUIDs = associationsProbe(bvrs, 5000, 1);
     }
 
     @After
@@ -295,10 +313,105 @@ public class BigQueryTest {
     }
 
 
-    private List<BVR> bvrProbe(boolean bigBranches, int count) throws SQLException {
+    @Test
+    public void queryForAssoc_usingRandomlySelectedBranches() throws SQLException {
 
+        final String brancSel = createBranchSelector(bvrs);
+
+        String uuidsQuery = "values "
+            + associationUUIDs.stream().map(n -> "(?::UUID)").collect(Collectors.joining(", "))
+            + "";
+
+
+        String bigQueryWithoutBindings = "/*ASSOC_RANDOM_BRANCES*/" + pezetQueryfromGutek;
+        bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$UUIDSQUERY", uuidsQuery);
+        bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$BVRSELECTOR", brancSel);
+
+        PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithoutBindings);
+
+        AtomicInteger n = new AtomicInteger(1);
+
+        featureUUIDs.stream().map(uuid -> ThrowingRunnable.unchecked(() -> statement.setString(n.incrementAndGet() -1, uuid.toString()))).forEach(r -> r.run());
+
+        System.out.println("[INFO]: " + bigQueryWithoutBindings);
+        System.out.println("[INFO]: bound " + n.get() + " parameters");
+
+        ResultSet res = statement.executeQuery();
+        res.next();
+        showExplain(res, "queryForAssoc_usingRandomlySelectedBranches");
+        res.close();
+        reset();
+    }
+
+    @Test
+    public void queryForAssoc_usingArrayBinding() throws SQLException {
+
+        String uuidsQuery = "values "
+            + associationUUIDs.stream().map(n -> "(?::UUID)").collect(Collectors.joining(", "))
+            + "";
+
+
+        String bigQueryWithoutBindings = "/*ASSOC_RANDOM_BRANCES*/" + pezetQueryfromGutek;
+        bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$UUIDSQUERY", uuidsQuery);
+        bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$BVRSELECTOR", fixedAttributesBranchSelector);
+
+        PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithoutBindings);
+
+
+        AtomicInteger n = new AtomicInteger(1);
+
+        featureUUIDs.stream().map(uuid -> ThrowingRunnable.unchecked(() -> statement.setString(n.incrementAndGet() -1, uuid.toString()))).forEach(r -> r.run());
+
+        System.out.println("[INFO]: " + bigQueryWithoutBindings);
+        System.out.println("[INFO]: bound " + n.get() + " parameters");
+
+        ResultSet res = statement.executeQuery();
+        res.next();
+        showExplain(res, "test_preparedStatementWithUnnestWithoutVersionRanges");
+        res.close();
+        reset();
+    }
+
+    @Test
+    public void queryForAssoc_usingInlinedAsocUUIDS() throws SQLException {
+
+        final String brancSel = createBranchSelector(bvrs);
+
+        String uuidsQuery = "values "
+            + featureUUIDs.stream().map(n -> "( '" + n.toString() + "' ::UUID)").collect(Collectors.joining(", "))
+            + "";
+
+
+        String bigQueryWithoutBindings = "/*ASSOC_RANDOM_BRANCES*/" + pezetQueryfromGutek;
+        bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$UUIDSQUERY", uuidsQuery);
+        bigQueryWithoutBindings = bigQueryWithoutBindings.replaceAll("\\$BVRSELECTOR", fixedAttributesBranchSelector);
+
+        PreparedStatement statement = vmdsConnection.prepareStatement(bigQueryWithoutBindings);
+
+
+        AtomicInteger n = new AtomicInteger(1);
+
+        System.out.println("[INFO]: " + bigQueryWithoutBindings);
+        System.out.println("[INFO]: bound " + n.get() + " parameters");
+
+        ResultSet res = statement.executeQuery();
+        res.next();
+        showExplain(res, "queryForAssoc_usingInlinedAsocUUIDS");
+        res.close();
+        reset();
+    }
+
+
+    private List<BVR> bvrProbe(boolean bigBranches, int count) throws SQLException {
+        // this query uses artificaly created table with basic statistics
+        // create table branch_stats as (select branch, count(1) size from vmds_r2.feature group by branch);
         String query =
-            "select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where random()>0.2 order by size $ORDER limit ?"
+            ("select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where branch not in "
+                + "("
+                + " SELECT unnest(cast(most_common_vals as text)::UUID[]) as most_common_vals\n"
+                + " FROM pg_stats where tablename = 'association' and attname='branch'"
+                + ") "
+                + "AND random()>0.2 order by size $ORDER limit ?")
                 .replaceAll("\\$ORDER", bigBranches ? "desc" : "asc");
         System.out.println(query);
         PreparedStatement statement = vmdsConnection.prepareStatement(
@@ -322,6 +435,30 @@ public class BigQueryTest {
     private List<UUID> featuresProbe(List<BVR> bvrs, int realIdsCount, int totalIdsCount) throws SQLException {
         String query = "with rnd_feature_select as (select id, floor(random()*100) r from vmds_r2.feature where branch = ANY(?::uuid[])) "
             + "select id from rnd_feature_select order by r limit ?";
+        List<UUID> branchIds = bvrs.stream().map(bvr -> bvr.branch).collect(Collectors.toList());
+        Array dbBranchUUIDS = vmdsConnection.createArrayOf("text", branchIds.stream().toArray());
+
+        PreparedStatement statement = vmdsConnection.prepareStatement(query);
+        statement.setArray(1, dbBranchUUIDS);
+        statement.setInt(2, realIdsCount);
+
+        ResultSet res = statement.executeQuery();
+        List<UUID> fetureUUIDS = Lists.newArrayList();
+        while (res.next()) {
+            fetureUUIDS.add(UUID.fromString(res.getString(1)));
+        }
+        if (fetureUUIDS.size() < totalIdsCount) {
+            fetureUUIDS.addAll(
+                IntStream.range(0, totalIdsCount - fetureUUIDS.size()).mapToObj(i -> UUID.randomUUID()).collect(Collectors.toList())
+            );
+        }
+        return fetureUUIDS;
+    }
+
+
+    private List<UUID> associationsProbe(List<BVR> bvrs, int realIdsCount, int totalIdsCount) throws SQLException {
+        String query = "with rnd_association_select as (select id, floor(random()*100) r from vmds_r2.association where branch = ANY(?::uuid[])) "
+            + "select id from rnd_association_select order by r limit ?";
         List<UUID> branchIds = bvrs.stream().map(bvr -> bvr.branch).collect(Collectors.toList());
         Array dbBranchUUIDS = vmdsConnection.createArrayOf("text", branchIds.stream().toArray());
 
@@ -567,6 +704,7 @@ public class BigQueryTest {
     private static void showExplain(ResultSet resultSet, String tag) throws SQLException {
 
         System.out.println("EXPLAIN ANALYZE /*TAG*/:\n".replaceAll("TAG", tag));
+        System.out.println(resultSet.getString(1));
         while (resultSet.next()) {
             System.out.println(resultSet.getString(1));
         }
