@@ -235,14 +235,6 @@ public class BigQueryTest {
     }
 
     @Test
-    public void run_selec1() throws SQLException {
-
-        execSelect1(vmdsConnection);
-        execSelect1(coresupConnection);
-        return;
-    }
-
-    @Test
     public void run_bigQueryInlined() throws SQLException {
 
         runInlinedQuery();
@@ -405,6 +397,7 @@ public class BigQueryTest {
     private List<BVR> bvrProbe(boolean bigBranches, int count) throws SQLException {
         // this query uses artificaly created table with basic statistics
         // create table branch_stats as (select branch, count(1) size from vmds_r2.feature group by branch);
+
         String query =
             ("select branch, jsq.version from branch_stats bs join journal_r2.journalbranchversionseq jsq on jsq.branch_id=bs.branch::text where branch not in "
                 + "("
