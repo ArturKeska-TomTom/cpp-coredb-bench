@@ -7,13 +7,19 @@ trigger:
 - main
 
 pool:
-  vmImage: ubuntu-latest
+  container: 'amd64/gradle:jdk8'
+  name: 'Private Cloud'
 
 steps:
+  - task: DownloadSecureFile@1
+    name: downloadMvnSettings
+    inputs:
+      secureFile: 'settings.xml'
 - task: Maven@3
   inputs:
     mavenPomFile: 'pom.xml'
     mavenOptions: '-Xmx3072m'
+    options: '-s $(downloadMvnSettings.secureFilePath)'
     javaHomeOption: 'JDKVersion'
     jdkVersionOption: '1.8'
     jdkArchitectureOption: 'x64'
