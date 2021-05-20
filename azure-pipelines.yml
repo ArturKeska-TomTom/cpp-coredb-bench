@@ -7,7 +7,7 @@ trigger:
 - main
 
 pool:
-  container: 'amd64/gradle:jdk8'
+  vmImage: ubuntu-latest
   name: 'Private Cloud'
 
 steps:
