@@ -11,10 +11,10 @@ pool:
   name: 'Private Cloud'
 
 steps:
-  - task: DownloadSecureFile@1
-    name: downloadMvnSettings
-    inputs:
-      secureFile: 'settings.xml'
+- task: DownloadSecureFile@1
+  name: downloadMvnSettings
+  inputs:
+   secureFile: 'settings.xml'
 - task: Maven@3
   inputs:
     mavenPomFile: 'pom.xml'
